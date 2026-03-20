@@ -36,7 +36,6 @@ import sqlite3
 import uuid
 from bs4 import BeautifulSoup
 from colorama import Fore, Style, init
-from dotenv import load_dotenv
 from psycopg2 import pool
 from pyrogram import Client as PyrogramClient, filters as PyrogramFilters
 from pyrogram.enums import ParseMode as PyrogramParseMode
@@ -121,11 +120,6 @@ PAYFAST_API_URL = "https://blackxcard-autostripe.onrender.com"
 # MODULE: database
 # ============================================================
 # ==============================
-# Load environment variables
-# ==============================
-load_dotenv()
-
-# ==============================
 # Logging Setup
 # ==============================
 logger = logging.getLogger(__name__)
@@ -133,11 +127,11 @@ logger = logging.getLogger(__name__)
 # ==============================
 # Database Configuration
 # ==============================
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "cardxchk")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "cardxchk07")
-DB_PORT = os.getenv("DB_PORT", "5432")
+DB_HOST = "localhost"
+DB_NAME = "cardxchk"
+DB_USER = "postgres"
+DB_PASS = "rocky"
+DB_PORT = "5432"
 
 # ==============================
 # Constants
@@ -5193,7 +5187,7 @@ async def handle_delall_callback(update: Update, context: CallbackContext):
 # Configure logging
 
 # Configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
+BOT_TOKEN = "8705971644:AAH3DCTgpHi0C8nFWp5hDE9UDL3nLGNcJoE"
 RATE_LIMIT_SECONDS = 3  # Minimum seconds between requests per user
 CACHE_DURATION_SECONDS = 300  # Cache duration for website analysis (5 minutes)
 MAX_CONCURRENT_REQUESTS = 10  # Maximum concurrent requests to avoid flooding
@@ -11464,7 +11458,7 @@ async def handle_pv_command(update, context):
 # API credentials
 API_ID = 21902589
 API_HASH = "646d988e7c7938f85ca652ece00b07ba"
-BOT_TOKEN = "8671810475:AAGRPptQxvp1fH1Mo4PVamz5fM-SVx3-4Io"
+BOT_TOKEN = "8705971644:AAH3DCTgpHi0C8nFWp5hDE9UDL3nLGNcJoE"
 SESSION_STRING = ""  # Optional: set a valid Pyrogram session string to enable /scr
 
 # Hardcoded limits and settings (as requested)
@@ -15819,12 +15813,7 @@ async def on_shutdown(application):
 # ==============================
 # DATABASE CONFIGURATION
 # ==============================
-# Set database connection parameters for database module
-os.environ["DB_HOST"] = os.getenv("DB_HOST", "localhost")
-os.environ["DB_PORT"] = os.getenv("DB_PORT", "5432")
-os.environ["DB_NAME"] = os.getenv("DB_NAME", "cardxchk")
-os.environ["DB_USER"] = os.getenv("DB_USER", "postgres")
-os.environ["DB_PASS"] = os.getenv("DB_PASS", "")
+# Database connection parameters are hardcoded in the database module above
 
 
 # ==============================
@@ -16969,13 +16958,8 @@ def main():
         print(error_msg)
         return
     setup_database()
-    # Load environment variables
-    load_dotenv()
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
-        print("❌ BOT_TOKEN not found in .env file!")
-        exit(1)
-        
+
+    TOKEN = "8705971644:AAH3DCTgpHi0C8nFWp5hDE9UDL3nLGNcJoE"
     app = Application.builder().token(TOKEN).build()
     
     app.post_init = on_startup
