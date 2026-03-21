@@ -676,6 +676,71 @@ def extract_all_cards(text):
         if card: cards.add(card)
     return list(cards)
 
+def format_shopify_response(card_str, response_data, bin_info, elapsed_time, username, user_id):
+    brand, bin_type, level, bank, country, flag = bin_info
+    response_text = response_data.get("Response", "-")
+    gateway = response_data.get("Gateway", "Shopify")
+    price = response_data.get("Price", "-")
+
+    resp_upper = str(response_text).upper()
+    if any(kw in resp_upper for kw in ["CHARGED", "ORDER COMPLETED", "THANK YOU", "PAYMENT SUCCESSFUL", "ORDER_PLACED"]):
+        status_flag = "Charged 💎"
+        is_charged = True
+    elif any(kw in resp_upper for kw in [
+        "INVALID_CVC", "INCORRECT_CVC", "INVALID_CVV", "INCORRECT_CVV",
+        "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS", "3D CC", "MISMATCHED_BILLING",
+        "MISMATCHED_PIN", "MISMATCHED_ZIP", "3DS_REQUIRED", "MISMATCHED_BILL",
+        "3D_AUTHENTICATION", "INCORRECT_ZIP", "INCORRECT_ADDRESS",
+        "APPROVED", "SUCCESS"
+    ]):
+        status_flag = "Approved ❎"
+        is_charged = False
+    elif "CLOUDFLARE" in resp_upper:
+        status_flag = "Cloudflare Spotted ⚠️"
+        is_charged = False
+    else:
+        status_flag = "Declined ❌"
+        is_charged = False
+
+    profile = f"<a href='tg://user?id={user_id}'>{username}</a>"
+    cc_bin = card_str.split("|")[0][:6] if "|" in card_str else card_str[:6]
+
+    msg = (
+        f"<b>[#AutoShopify] | Sync</b> ✦\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[•] Card</b>- <code>{card_str}</code>\n"
+        f"<b>[•] Gateway</b> - <b>{gateway}</b>\n"
+        f"<b>[•] Status</b>- <code>{status_flag}</code>\n"
+        f"<b>[•] Response</b>- <code>{response_text}</code>\n"
+        f"<b>[•] Price</b>- <code>{price}</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[+] Bin</b>: <code>{cc_bin}</code>\n"
+        f"<b>[+] Info</b>: <code>{brand} - {bin_type} - {level}</code>\n"
+        f"<b>[+] Bank</b>: <code>{bank}</code> 🏦\n"
+        f"<b>[+] Country</b>: <code>{country} - [{flag}]</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[ﾒ] Checked By</b>: {profile}\n"
+        f"<b>[ϟ] Dev</b> ➺ <a href=\"https://t.me/itzspooooky\">𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[ﾒ] T/t</b>: <code>[{elapsed_time} 𝐬]</code> <b>|P/x:</b> [<code>Live ⚡️</code>]"
+    )
+
+    return status_flag, is_charged, msg
+
+def get_msh_status_flag(raw_response):
+    resp_upper = str(raw_response).upper()
+    if any(kw in resp_upper for kw in ["ORDER_PLACED", "THANK YOU", "CHARGED", "ORDER COMPLETED", "PAYMENT SUCCESSFUL"]):
+        return "Charged 💎"
+    elif any(kw in resp_upper for kw in [
+        "3D CC", "MISMATCHED_BILLING", "MISMATCHED_PIN", "MISMATCHED_ZIP",
+        "INSUFFICIENT_FUNDS", "INVALID_CVC", "INCORRECT_CVC", "3DS_REQUIRED",
+        "MISMATCHED_BILL", "INVALID_CVV", "INCORRECT_CVV", "INSUFFICIENT FUNDS",
+        "APPROVED", "SUCCESS"
+    ]):
+        return "Approved ✅"
+    else:
+        return "Declined ❌"
+
 async def is_registered_user(user_id):
     """Check if user is registered (has sites, premium, or in free_users)"""
     sites = await load_json(SITE_FILE)
@@ -1599,6 +1664,7 @@ async def cmds_shopify_callback(event):
 ⟐ <b>Status</b>: <code>Active ✅</code>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
 ⟐ <b>Site Cmd</b>: <code>/add site.com</code>
+⟐ <b>Test + Add</b>: <code>/addurl site.com</code>
 ⟐ <b>Check Cmd</b>: <code>/check</code>
 """
     shopify_buttons = [
@@ -1832,6 +1898,90 @@ async def add_site(event):
         else: await event.reply("❌ 𝙉𝙤 𝙣𝙚𝙬 𝙨𝙞𝙩𝙚𝙨 𝙩𝙤 𝙖𝙙𝙙!")
     except Exception as e: await event.reply(f"❌ 𝙀𝙧𝙧𝙤𝙧: {e}")
 
+@client.on(events.NewMessage(pattern='/addurl'))
+async def add_site_with_test(event):
+    can_access, access_type = await can_use(event.sender_id, event.chat)
+    if access_type == "banned": return await event.reply(banned_user_message())
+    if not event.is_private:
+        return await event.reply("🔒 This command only works in private chat!")
+
+    parts = event.raw_text.split(maxsplit=1)
+    if len(parts) < 2:
+        return await event.reply(
+            "<pre>Usage ❌</pre>\n"
+            "<b>Please provide a site URL.</b>\n\n"
+            "<b>Example:</b>\n<code>/addurl https://example.com</code>",
+            parse_mode='html'
+        )
+
+    site = parts[1].strip()
+    user_id = event.sender_id
+
+    wait_msg = await event.reply("<pre>[🔍 Checking Site..! ]</pre>", parse_mode='html')
+    start_time = time.time()
+
+    try:
+        result = await test_single_site(site, user_id=user_id)
+        end_time = time.time()
+        time_taken = round(end_time - start_time, 2)
+
+        if result.get("status") == "working":
+            response_msg = result.get("response", "N/A")
+            price = result.get("price", "-")
+            gateway = f"Shopify {price}"
+
+            sites = await load_json(SITE_FILE)
+            user_sites = sites.get(str(user_id), [])
+
+            if not site.startswith('http'):
+                site_domain = site
+            else:
+                site_domain = site
+
+            if site_domain not in user_sites:
+                user_sites.append(site_domain)
+                sites[str(user_id)] = user_sites
+                await save_json(SITE_FILE, sites)
+
+            try:
+                sender = await event.get_sender()
+                fname = sender.first_name if sender.first_name else f"user_{user_id}"
+            except:
+                fname = f"user_{user_id}"
+
+            clickable = f"<a href='tg://user?id={user_id}'>{fname}</a>"
+
+            await wait_msg.edit(
+                f"<pre>Site Added ✅~ Sync ✦</pre>\n"
+                f"[⌯] <b>Site:</b> <code>{site}</code>\n"
+                f"[⌯] <b>Gateway:</b> <code>{gateway}</code>\n"
+                f"[⌯] <b>Response:</b> <code>{response_msg}</code>\n"
+                f"[⌯] <b>Cmd:</b> <code>/sh</code>\n"
+                f"[⌯] <b>Time Taken:</b> <code>{time_taken} sec</code>\n"
+                f"━━━━━━━━━━━━━\n"
+                f"[⌯] <b>Req By:</b> {clickable}\n"
+                f"[⌯] <b>Dev:</b> <a href='https://t.me/itzspooooky'>𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>",
+                parse_mode='html',
+                link_preview=False
+            )
+        elif result.get("status") == "proxy_dead":
+            await wait_msg.edit(
+                "<pre>Proxy Error ⚠️</pre>\n"
+                "<b>Your proxy is dead. Add a new proxy using /addpxy</b>",
+                parse_mode='html'
+            )
+        else:
+            await wait_msg.edit("<pre>Site Not Supported ❌</pre>", parse_mode='html')
+
+    except Exception as e:
+        time_taken = round(time.time() - start_time, 2)
+        await wait_msg.edit(
+            f"<pre>Error ⚠️</pre>\n"
+            f"<code>{e}</code>\n"
+            f"<b>Time Taken:</b> <code>{time_taken} sec</code>",
+            parse_mode='html'
+        )
+
 @client.on(events.NewMessage(pattern='/rm'))
 async def remove_site(event):
     can_access, access_type = await can_use(event.sender_id, event.chat)
@@ -2037,16 +2187,23 @@ async def process_sh_card(event, access_type):
             return await event.reply("𝙁𝙤𝙧𝙢𝙚𝙩 ➜ /sh 4111111111111111|12|2025|123\n\n𝙊𝙧 𝙧𝙚𝙥𝙡𝙮 𝙩𝙤 𝙖 𝙢𝙚𝙨𝙨𝙖𝙜𝙚 𝙘𝙤𝙣𝙩𝙖𝙞𝙣𝙞𝙣𝙜 𝙘𝙧𝙚𝙙𝙞𝙩 𝙘𝙖𝙧𝙙 𝙞𝙣𝙛𝙤", parse_mode="markdown")
     sites = await load_json(SITE_FILE)
     user_sites = sites.get(str(event.sender_id), [])
-    if not user_sites: return await event.reply("𝙔𝙤𝙪 𝙝𝙖𝙫𝙚𝙣'𝙩 𝙖𝙙𝙙𝙚𝙙 𝙖𝙣𝙮 𝙐𝙍𝙇𝙨. 𝙁𝙞𝙧𝙨𝙩 𝙖𝙙𝙙 𝙪𝙨𝙞𝙣𝙜 /𝙖𝙙𝙙")
-    loading_msg = await event.reply("🍳")
+    if not user_sites: return await event.reply(
+        "<pre>Site Not Found ⚠️</pre>\nError : <code>Please Set Site First</code>\n~ <code>Using /add or /addurl in Bot's Private</code>",
+        parse_mode='html'
+    )
+    loading_msg = await event.reply("<pre>[$sh] | Processing..!</pre>", parse_mode='html')
     start_time = time.time()
     async def animate_loading():
-        emojis = ["🍳", "🍳🍳", "🍳🍳🍳", "🍳🍳🍳🍳", "🍳🍳🍳🍳🍳"]
+        frames = [
+            "<pre>[$sh] | Processing.</pre>",
+            "<pre>[$sh] | Processing..</pre>",
+            "<pre>[$sh] | Processing..!</pre>"
+        ]
         i = 0
         while True:
             try:
-                await loading_msg.edit(emojis[i % 5])
-                await asyncio.sleep(0.5)
+                await loading_msg.edit(frames[i % 3], parse_mode='html')
+                await asyncio.sleep(1)
                 i += 1
             except: break
     loading_task = asyncio.create_task(animate_loading())
@@ -2055,52 +2212,29 @@ async def process_sh_card(event, access_type):
         loading_task.cancel()
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 2)
-        brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-        response_text = res.get("Response", "").lower()
-        status_text = res.get("Status", "").lower()
-        
-        # Check for charged status
-        is_charged = False
-        if "charged" in response_text or "charged" in status_text:
-            status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-            status_result = "Charged"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "cloudflare bypass failed" in response_text:
-            status_header = " 𝙇𝙊𝙐     𝙀 𝙎𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-            res["Response"] = "Cloudflare spotted 🤡 change site or try again"
-        elif "thank you" in response_text or "payment successful" in response_text:
-            status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-            status_result = "Charged"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif any(key in response_text for key in ["invalid_cvv", "incorrect_cvv", "insufficient_funds", "approved", "success", "invalid_cvc", "incorrect_cvc", "incorrect_zip", "insufficient funds"]):
-            status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-            status_result = "Approved"
+        bin_info = await get_bin_info(card.split("|")[0])
+
+        status_flag, is_charged, msg = format_shopify_response(
+            card, res, bin_info, elapsed_time, username, event.sender_id
+        )
+
+        if is_charged:
+            await save_approved_card(card, "Charged", res.get('Response'), res.get('Gateway'), res.get('Price'))
+        elif "Approved" in status_flag:
             await save_approved_card(card, "APPROVED", res.get('Response'), res.get('Gateway'), res.get('Price'))
-        else:
-            status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-            status_result = "Declined"
-        msg = f"""{status_header}
 
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {res.get('Gateway', 'Unknown')}
-𝗥𝗲𝙨𝙥𝙤𝙣𝙨𝗲 ⇾ {res.get('Response')}
-𝗣𝗿𝗶𝗰𝗲 ⇾ {res.get('Price')} 💸
-𝗦𝗶𝘁𝗲 ⇾ {site_index}
+        buttons = [
+            [Button.url("Support", "https://t.me/itzspooooky"),
+             Button.inline("Plans", b"plans_info")]
+        ]
 
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
-
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝗱𝙨"""
         await loading_msg.delete()
-        result_msg = await event.reply(msg)
+        result_msg = await event.reply(msg, parse_mode='html', buttons=buttons, link_preview=False)
         if is_charged: await pin_charged_message(event, result_msg)
     except Exception as e:
         loading_task.cancel()
         await loading_msg.delete()
-        await event.reply(f"❌ 𝙀𝙧𝙧𝙤𝙧: {e}")
+        await event.reply(f"<code>Internal Error Occurred. Try again later.</code>\n<code>{e}</code>", parse_mode='html')
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]msh(?:\s|$)'))
 async def msh(event):
@@ -2141,19 +2275,32 @@ async def msh(event):
     asyncio.create_task(process_msh_cards(event, cards, user_sites))
 
 async def process_msh_cards(event, cards, sites):
-    # Get username
     try:
         sender = await event.get_sender()
-        username = sender.username if sender.username else f"user_{event.sender_id}"
+        username = sender.first_name if sender.first_name else f"user_{event.sender_id}"
     except:
         username = f"user_{event.sender_id}"
-    
-    sent_msg = await event.reply(f"```𝙎𝙤మె𝙩𝙝𝙞𝙣𝙜 𝘽𝙞𝙜 𝘾𝙤𝙤𝙠𝙞𝙣𝙜 🍳 {len(cards)} 𝙏𝙤𝙩𝙖𝙡.```")
+
+    checked_by = f"<a href='tg://user?id={event.sender_id}'>{username}</a>"
+    card_count = len(cards)
+    gateway = "Shopify"
+
+    loader_msg = await event.reply(
+        f"<pre>\u2726 [$msh] | M-Self Shopify</pre>\n"
+        f"<b>[\u26ac] Gateway -</b> <b>{gateway}</b>\n"
+        f"<b>[\u26ac] CC Amount : {card_count}</b>\n"
+        f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+        f"<b>[\u26ac] Status :</b> <code>Processing Request..!</code>",
+        parse_mode='html'
+    )
+
+    start_time = time.time()
+    batch_size = 10
+    final_results = []
     cards_per_site = 2
     current_site_index = 0
     cards_on_current_site = 0
 
-    batch_size = 10
     for i in range(0, len(cards), batch_size):
         batch = cards[i:i+batch_size]
         tasks = []
@@ -2168,58 +2315,58 @@ async def process_msh_cards(event, cards, sites):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for j, (card, result) in enumerate(zip(batch, results)):
-            if isinstance(result, Exception):
-                result = {"Response": f"Exception: {str(result)}", "Price": "-", "Gateway": "-"}
+        for card_item, raw_response in zip(batch, results):
+            if isinstance(raw_response, Exception):
+                raw_response = {"Response": str(raw_response), "Price": "-", "Gateway": "-"}
 
-            start_time = time.time()
-            end_time = time.time()
-            elapsed_time = round(end_time - start_time, 2)
-            brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-            response_text = result.get("Response", "").lower()
-            status_text = result.get("Status", "").lower()
-            
-            # Check for charged status
-            is_charged = False
-            if "charged" in response_text or "charged" in status_text:
-                status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-                status_result = "Charged"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "cloudflare bypass failed" in response_text:
-                status_header = "   𝙐𝘿𝙁𝙇  𝙀  𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-                result["Response"] = "Cloudflare spotted 🤡 change site or try again"
-            elif "thank you" in response_text or "payment successful" in response_text:
-                status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-                status_result = "Charged"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif any(key in response_text for key in ["invalid_cvv", "incorrect_cvv", "insufficient_funds", "approved", "success", "invalid_cvc", "incorrect_cvc", "incorrect_zip", "insufficient funds"]):
-                status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-                status_result = "Approved"
-                await save_approved_card(card, "APPROVED", result.get('Response'), result.get('Gateway'), result.get('Price'))
-            else:
-                status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-                status_result = "Declined"
-            card_msg = f"""{status_header}
+            response_text = raw_response.get("Response", "-") if isinstance(raw_response, dict) else str(raw_response)
+            status_flag = get_msh_status_flag(response_text)
 
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {result.get('Gateway', 'Unknown')}
-𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 ⇾ {result.get('Response')}
-𝗣𝗿𝗶𝗰𝗲 ⇾ {result.get('Price')} 💸
-𝗦𝗶𝘁𝗲 ⇾ {current_site_index + 1}
+            is_charged = "Charged" in status_flag
+            if is_charged:
+                await save_approved_card(card_item, "Charged", response_text, raw_response.get("Gateway", "-") if isinstance(raw_response, dict) else "-", raw_response.get("Price", "-") if isinstance(raw_response, dict) else "-")
+            elif "Approved" in status_flag:
+                await save_approved_card(card_item, "APPROVED", response_text, raw_response.get("Gateway", "-") if isinstance(raw_response, dict) else "-", raw_response.get("Price", "-") if isinstance(raw_response, dict) else "-")
 
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
+            final_results.append(
+                f"\u2022 <b>Card :</b> <code>{card_item}</code>\n"
+                f"\u2022 <b>Status :</b> <code>{status_flag}</code>\n"
+                f"\u2022 <b>Result :</b> <code>{response_text or '-'}</code>\n"
+                "\u2501 \u2501 \u2501 \u2501 \u2501 \u2501\u2501\u2501 \u2501 \u2501 \u2501 \u2501 \u2501"
+            )
 
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝗱𝙨
-"""
-            result_msg = await event.reply(card_msg)
-            if is_charged: await pin_charged_message(event, result_msg)
-            await asyncio.sleep(0.1)
+        try:
+            await loader_msg.edit(
+                f"<pre>\u2726 [$msh] | M-Self Shopify</pre>\n"
+                + "\n".join(final_results) + "\n"
+                f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+                f"<b>[⚬] Dev :</b> <a href='https://t.me/itzspooooky'>𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>",
+                parse_mode='html',
+                link_preview=False
+            )
+        except Exception:
+            pass
 
-    await sent_msg.edit(f"```✅ 𝙈𝙖𝙨𝙨 𝘾𝙝𝙚𝙘𝙠 𝘾𝙤𝙢𝙥𝙡𝙚𝙩𝙚! 𝙋𝙧𝙤𝙘𝙚𝙨𝙨𝙚𝙙 {len(cards)} 𝙘𝙖𝙧𝙙𝙨.```")
+    end_time = time.time()
+    timetaken = round(end_time - start_time, 2)
+
+    final_result_text = "\n".join(final_results)
+    try:
+        await loader_msg.edit(
+            f"<pre>\u2726 [$msh] | M-Self Shopify</pre>\n"
+            f"{final_result_text}\n"
+            f"<b>[\u26ac] T/t :</b> <code>{timetaken}s</code>\n"
+            f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+            f"<b>[⚬] Dev :</b> <a href='https://t.me/itzspooooky'>𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>",
+            parse_mode='html',
+            link_preview=False
+        )
+    except Exception:
+        await event.reply(
+            f"<pre>\u2726 [$msh] | Complete \u2714\ufe0f</pre>\n"
+            f"<b>Processed {card_count} cards in {timetaken}s</b>",
+            parse_mode='html'
+        )
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]mtxt(?:\s|$)'))
 async def mtxt(event):

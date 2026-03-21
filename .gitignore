@@ -1,0 +1,11 @@
+__pycache__/
+*.session
+*.session-journal
+*.pyc
+premium.json
+free_users.json
+user_sites.json
+keys.json
+cc.txt
+banned_users.json
+proxy.json
